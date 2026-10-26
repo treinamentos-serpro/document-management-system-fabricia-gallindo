@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import DocumentList from '../components/DocumentList.jsx';
-import UploadForm from '../components/UploadForm.jsx';
+import UploadComponent from '../components/UploadComponent.jsx';
 import {
   downloadDocument,
   listDocuments,
@@ -12,37 +12,36 @@ export default function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [listFailed, setListFailed] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [downloadingId, setDownloadingId] = useState(null);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const listRequest = useRef(null);
 
   const refreshDocuments = useCallback(async () => {
-    const result = await listDocuments();
-    setDocuments(result);
-    setListFailed(false);
+    listRequest.current?.abort();
+    const controller = new AbortController();
+    listRequest.current = controller;
+    setLoading(true);
+    try {
+      const result = await listDocuments({ signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setDocuments(result);
+      setListFailed(false);
+    } catch (requestError) {
+      if (controller.signal.aborted) return;
+      setListFailed(true);
+      throw requestError;
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    let active = true;
-
-    listDocuments()
-      .then((result) => {
-        if (active) setDocuments(result);
-      })
-      .catch((requestError) => {
-        if (active) {
-          setError(requestError.message);
-          setListFailed(true);
-        }
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+    refreshDocuments().catch((requestError) => setError(requestError.message));
 
     return () => {
-      active = false;
+      listRequest.current?.abort();
     };
-  }, []);
+  }, [refreshDocuments]);
 
   async function handleUpload(file) {
     setUploading(true);
@@ -51,8 +50,12 @@ export default function DocumentsPage() {
 
     try {
       await uploadDocument(file);
-      await refreshDocuments();
       setNotice('Documento enviado com sucesso.');
+      try {
+        await refreshDocuments();
+      } catch (requestError) {
+        setError(`O documento foi enviado, mas a lista não foi atualizada: ${requestError.message}`);
+      }
       return true;
     } catch (requestError) {
       setError(requestError.message);
@@ -63,20 +66,19 @@ export default function DocumentsPage() {
   }
 
   async function handleDownload(document) {
-    setDownloadingId(document.id);
     setError('');
+    setNotice('');
 
     try {
       await downloadDocument(document.id, document.originalName);
+      setNotice('Download iniciado.');
     } catch (requestError) {
       setError(requestError.message);
-    } finally {
-      setDownloadingId(null);
     }
   }
 
   return (
-    <main className="page-shell">
+    <>
       <header className="page-header">
         <div className="brand-mark" aria-hidden="true">D</div>
         <div>
@@ -95,9 +97,8 @@ export default function DocumentsPage() {
             <h2 id="upload-title">Enviar documento</h2>
           </div>
         </div>
-        <UploadForm onUpload={handleUpload} disabled={uploading} />
+        <UploadComponent onUpload={handleUpload} disabled={uploading} />
       </section>
-
       {error && <p className="feedback error" role="alert">{error}</p>}
       {notice && <p className="feedback success" role="status">{notice}</p>}
 
@@ -117,14 +118,10 @@ export default function DocumentsPage() {
           <DocumentList
             documents={documents}
             onDownload={handleDownload}
-            downloadingId={downloadingId}
           />
         )}
       </section>
 
-      <p className="demo-notice">
-        Demonstração: os documentos são associados a um usuário de exemplo.
-      </p>
-    </main>
+    </>
   );
 }

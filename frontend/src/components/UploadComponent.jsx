@@ -1,12 +1,13 @@
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 
-export default function UploadForm({ onUpload, disabled }) {
+export default function UploadComponent({ onUpload, disabled = false }) {
   const [file, setFile] = useState(null);
   const formRef = useRef(null);
+  const inputId = useId();
 
   async function handleSubmit(event) {
     event.preventDefault();
-    if (!file) return;
+    if (!file || disabled) return;
 
     const uploaded = await onUpload(file);
     if (!uploaded) return;
@@ -15,11 +16,12 @@ export default function UploadForm({ onUpload, disabled }) {
   }
 
   return (
-    <form className="upload-form" onSubmit={handleSubmit} ref={formRef}>
-      <label htmlFor="document-file">Selecione um documento</label>
+    <form className="upload-form" onSubmit={handleSubmit} ref={formRef} aria-busy={disabled}>
+      <label htmlFor={inputId}>Selecione um documento</label>
       <div className="upload-controls">
         <input
-          id="document-file"
+          id={inputId}
+          name="file"
           type="file"
           onChange={(event) => setFile(event.target.files?.[0] || null)}
           disabled={disabled}
@@ -29,7 +31,7 @@ export default function UploadForm({ onUpload, disabled }) {
           {disabled ? 'Enviando...' : 'Enviar documento'}
         </button>
       </div>
-      <p className="hint">Limite: 10 MiB por arquivo.</p>
+      <p className="hint">Um arquivo por envio. O limite de tamanho é definido pelo servidor.</p>
     </form>
   );
 }

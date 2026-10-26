@@ -10,15 +10,21 @@ async function request(url, options = {}) {
   });
 
   if (!response.ok) {
-    const payload = await response.json().catch(() => null);
+    let payload;
+    try {
+      payload = await response.json();
+    } catch (error) {
+      if (!(error instanceof SyntaxError)) throw error;
+      throw new Error(`Não foi possível concluir a operação (HTTP ${response.status}).`);
+    }
     throw new Error(payload?.error?.message || 'Não foi possível concluir a operação.');
   }
 
   return response;
 }
 
-export async function listDocuments() {
-  const response = await request('/api/documents');
+export async function listDocuments({ signal } = {}) {
+  const response = await request('/api/documents', { signal });
   const payload = await response.json();
   return payload.documents;
 }
@@ -42,8 +48,11 @@ export async function downloadDocument(id, originalName) {
   const link = document.createElement('a');
   link.href = objectUrl;
   link.download = originalName;
-  document.body.append(link);
-  link.click();
-  link.remove();
-  window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  try {
+    document.body.append(link);
+    link.click();
+  } finally {
+    link.remove();
+    window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+  }
 }

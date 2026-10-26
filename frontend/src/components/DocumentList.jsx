@@ -1,3 +1,5 @@
+import DownloadButton from './DownloadButton.jsx';
+
 function formatSize(size) {
   if (size < 1024) return `${size} B`;
   if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
@@ -11,7 +13,7 @@ function formatDate(value) {
   }).format(new Date(value));
 }
 
-export default function DocumentList({ documents, onDownload, downloadingId }) {
+export default function DocumentList({ documents, onDownload }) {
   if (documents.length === 0) {
     return <p className="empty-state">Nenhum documento enviado ainda.</p>;
   }
@@ -26,14 +28,7 @@ export default function DocumentList({ documents, onDownload, downloadingId }) {
               {formatSize(document.size)} · {formatDate(document.uploadedAt)}
             </span>
           </div>
-          <button
-            type="button"
-            className="secondary-button"
-            onClick={() => onDownload(document)}
-            disabled={downloadingId === document.id}
-          >
-            {downloadingId === document.id ? 'Baixando...' : 'Baixar'}
-          </button>
+          <DownloadButton document={document} onDownload={onDownload} />
         </li>
       ))}
     </ul>
