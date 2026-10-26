@@ -2,8 +2,8 @@ const AppError = require('../errors/appError');
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-function publicDocument({ storageName: _storageName, ...document }) {
-  return document;
+function publicDocument({ id, originalName, size, uploadedAt, owner, mimeType }) {
+  return { id, originalName, size, uploadedAt, owner, mimeType };
 }
 
 function createDocumentsController(documentService) {
@@ -42,6 +42,7 @@ function createDocumentsController(documentService) {
         (error) => {
           if (error) {
             if (error.code === 'ENOENT' && !response.headersSent) {
+              console.error('Arquivo de documento indisponível:', error);
               return next(new AppError(404, 'DOCUMENT_NOT_FOUND', 'Documento não encontrado.'));
             }
             if (response.headersSent) {

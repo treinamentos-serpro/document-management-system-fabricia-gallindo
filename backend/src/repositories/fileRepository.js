@@ -16,7 +16,8 @@ function createFileRepository(storageDirectory, maxFileSizeBytes) {
       },
     }),
     limits: {
-      fileSize: maxFileSizeBytes,
+      // O parser sinaliza limite ao atingi-lo, não apenas ao ultrapassá-lo.
+      fileSize: maxFileSizeBytes + 1,
       files: 1,
       fields: 0,
     },
@@ -26,7 +27,14 @@ function createFileRepository(storageDirectory, maxFileSizeBytes) {
     upload,
 
     getPath(storageName) {
-      if (typeof storageName !== 'string' || path.basename(storageName) !== storageName) {
+      if (
+        typeof storageName !== 'string'
+        || !storageName
+        || storageName === '.'
+        || storageName === '..'
+        || /[\\/\0]/.test(storageName)
+        || path.basename(storageName) !== storageName
+      ) {
         throw new Error('Nome interno de arquivo inválido.');
       }
       return path.join(storageDirectory, storageName);

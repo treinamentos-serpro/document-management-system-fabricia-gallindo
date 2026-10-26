@@ -1,4 +1,5 @@
 const express = require('express');
+const { MulterError } = require('multer');
 const config = require('./config');
 const AppError = require('./errors/appError');
 const createDocumentRepository = require('./repositories/documentRepository');
@@ -20,11 +21,14 @@ function createApp(options = {}) {
     response.json({ status: 'ok' });
   });
 
-  app.use('/api', createDocumentsRoutes(controller, fileRepository.upload));
+  const documentsRouter = createDocumentsRoutes(controller, fileRepository.upload);
+  app.use('/api', documentsRouter);
+  app.use('/', documentsRouter);
 
-  app.use((error, _request, response, _next) => {
+  app.use((error, _request, response, next) => {
     if (response.headersSent) {
-      return response.end();
+      console.error('Falha após o início da resposta:', error);
+      return next(error);
     }
 
     if (error?.code === 'LIMIT_FILE_SIZE') {
@@ -33,7 +37,7 @@ function createApp(options = {}) {
       });
     }
 
-    if (error instanceof multerError) {
+    if (error instanceof MulterError) {
       return response.status(400).json({
         error: { code: 'VALIDATION_ERROR', message: 'Requisição de upload inválida.' },
       });
@@ -63,7 +67,6 @@ function createApp(options = {}) {
   return app;
 }
 
-const multerError = require('multer').MulterError;
 const app = createApp();
 
 if (require.main === module) {
