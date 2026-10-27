@@ -1,32 +1,79 @@
-// Seed do servidor backend do Document Management System.
-//
-// Este arquivo é apenas um ponto de partida mínimo. Ao longo do workshop você
-// vai usar o Agent Mode do GitHub Copilot para construir as camadas:
-//   - routes/       (definição das rotas)
-//   - controllers/  (entrada HTTP e validação)
-//   - services/     (regras de negócio)
-//   - repositories/ (persistência: arquivos locais + metadados em memória)
-//
-// Restrição do projeto: uploads são gravados no filesystem local da aplicação
-// usando multer com diskStorage. Não utilize provedores externos.
-
 const express = require('express');
+const { MulterError } = require('multer');
+const config = require('./config');
+const AppError = require('./errors/appError');
+const createDocumentRepository = require('./repositories/documentRepository');
+const createFileRepository = require('./repositories/fileRepository');
+const createDocumentService = require('./services/documentService');
+const createDocumentsController = require('./controllers/documentsController');
+const createDocumentsRoutes = require('./routes/documentsRoutes');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+function createApp(options = {}) {
+  const storageDirectory = options.storageDirectory ?? config.storageDirectory;
+  const maxFileSizeBytes = options.maxFileSizeBytes ?? config.maxFileSizeBytes;
+  const documentRepository = createDocumentRepository();
+  const fileRepository = createFileRepository(storageDirectory, maxFileSizeBytes);
+  const documentService = createDocumentService(documentRepository, fileRepository);
+  const controller = createDocumentsController(documentService);
+  const app = express();
 
-app.use(express.json());
+  app.get('/health', (_request, response) => {
+    response.json({ status: 'ok' });
+  });
 
-// Endpoint de verificação de saúde. As demais rotas (/upload, /documents,
-// /documents/:id/download) serão implementadas durante o Passo 2.
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok' });
-});
+  const documentsRouter = createDocumentsRoutes(controller, fileRepository.upload);
+  app.use('/api', documentsRouter);
+  app.use('/', documentsRouter);
+
+  app.use((error, _request, response, next) => {
+    if (response.headersSent) {
+      console.error('Falha após o início da resposta:', error);
+      return next(error);
+    }
+
+    if (error?.code === 'LIMIT_FILE_SIZE') {
+      return response.status(413).json({
+        error: { code: 'FILE_TOO_LARGE', message: 'O arquivo excede o limite permitido.' },
+      });
+    }
+
+    if (error instanceof MulterError) {
+      return response.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'Requisição de upload inválida.' },
+      });
+    }
+
+    if (
+      error?.message === 'Unexpected end of form'
+      || error?.message === 'Multipart: Boundary not found'
+    ) {
+      return response.status(400).json({
+        error: { code: 'VALIDATION_ERROR', message: 'Requisição de upload inválida.' },
+      });
+    }
+
+    if (error instanceof AppError) {
+      return response.status(error.status).json({
+        error: { code: error.code, message: error.message },
+      });
+    }
+
+    console.error('Erro inesperado na API:', error);
+    return response.status(500).json({
+      error: { code: 'INTERNAL_ERROR', message: 'Ocorreu um erro interno.' },
+    });
+  });
+
+  return app;
+}
+
+const app = createApp();
 
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`DMS backend ouvindo na porta ${PORT}`);
+  app.listen(config.port, () => {
+    console.log(`DMS backend ouvindo na porta ${config.port}`);
   });
 }
 
 module.exports = app;
+module.exports.createApp = createApp;

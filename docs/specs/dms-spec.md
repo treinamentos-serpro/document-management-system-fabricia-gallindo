@@ -61,6 +61,7 @@ credencial. Sem autenticação, ele pode ser falsificado e não oferece seguran�
 de acesso em produção. A aplicação deve deixar essa limitação explícita; a
 introdução de autenticação real requer decisão e escopo próprios.
 
+
 ## 4. Requisitos não funcionais
 
 | ID     | Requisito |
