@@ -23,6 +23,83 @@ async function startTestApp(context, maxFileSizeBytes = 32) {
   return { baseUrl, storageDirectory };
 }
 
+async function uploadDocument(baseUrl, owner, fileName, contents) {
+  const form = new FormData();
+  form.append('file', new Blob([contents], { type: 'text/plain' }), fileName);
+  const response = await fetch(`${baseUrl}/api/upload`, {
+    method: 'POST',
+    headers: { 'X-User-Id': owner },
+    body: form,
+  });
+  return { response, payload: await response.json() };
+}
+
+test('POST /api/upload stores the file and returns its public metadata', async (context) => {
+  const { baseUrl, storageDirectory } = await startTestApp(context);
+  const { response, payload } = await uploadDocument(
+    baseUrl,
+    'alice',
+    'notes.txt',
+    'document contents'
+  );
+
+  assert.equal(response.status, 201);
+  assert.equal(payload.document.originalName, 'notes.txt');
+  assert.equal(payload.document.owner, 'alice');
+  assert.equal(payload.document.size, 17);
+  assert.equal(payload.document.mimeType, 'text/plain');
+  assert.equal(Object.hasOwn(payload.document, 'storageName'), false);
+
+  const [storageName] = await fs.readdir(storageDirectory);
+  assert.match(storageName, /^[0-9a-f-]{36}\.upload$/);
+  assert.equal(await fs.readFile(path.join(storageDirectory, storageName), 'utf8'), 'document contents');
+});
+
+test('GET /api/documents lists only documents belonging to the requested user', async (context) => {
+  const { baseUrl } = await startTestApp(context);
+  const { response: uploadResponse, payload } = await uploadDocument(
+    baseUrl,
+    'alice',
+    'notes.txt',
+    'document contents'
+  );
+  assert.equal(uploadResponse.status, 201);
+
+  const aliceList = await fetch(`${baseUrl}/api/documents`, {
+    headers: { 'X-User-Id': 'alice' },
+  });
+  assert.deepEqual((await aliceList.json()).documents.map(({ id }) => id), [payload.document.id]);
+
+  const bobList = await fetch(`${baseUrl}/api/documents`, {
+    headers: { 'X-User-Id': 'bob' },
+  });
+  assert.deepEqual(await bobList.json(), { documents: [] });
+});
+
+test('GET /api/documents/:id/download returns an attachment only to its owner', async (context) => {
+  const { baseUrl } = await startTestApp(context);
+  const { response: uploadResponse, payload } = await uploadDocument(
+    baseUrl,
+    'alice',
+    'notes.txt',
+    'document contents'
+  );
+  assert.equal(uploadResponse.status, 201);
+
+  const forbidden = await fetch(`${baseUrl}/api/documents/${payload.document.id}/download`, {
+    headers: { 'X-User-Id': 'bob' },
+  });
+  assert.equal(forbidden.status, 404);
+
+  const download = await fetch(`${baseUrl}/api/documents/${payload.document.id}/download`, {
+    headers: { 'X-User-Id': 'alice' },
+  });
+  assert.equal(download.status, 200);
+  assert.equal(download.headers.get('content-type'), 'text/plain');
+  assert.match(download.headers.get('content-disposition'), /^attachment;.*notes\.txt/);
+  assert.equal(await download.text(), 'document contents');
+});
+
 test('document API validates requests and isolates uploads by user', async (context) => {
   const { baseUrl, storageDirectory } = await startTestApp(context);
   const missingUser = await fetch(`${baseUrl}/api/documents`);
