@@ -2,6 +2,24 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const createDocumentService = require('../src/services/documentService');
 const createDocumentRepository = require('../src/repositories/documentRepository');
+const createDocumentMetadata = require('../src/services/documentMetadataFactory');
+
+test('metadata factory sanitizes the client name and validates the MIME format', () => {
+  const document = createDocumentMetadata('alice', {
+    filename: 'internal.upload',
+    originalname: '..\\reports\\quarter\nly.txt',
+    mimetype: 'text/plain; charset=utf-8',
+    size: 4,
+  });
+
+  assert.equal(document.originalName, 'quarterly.txt');
+  assert.equal(document.mimeType, 'application/octet-stream');
+  assert.equal(document.owner, 'alice');
+  assert.equal(document.storageName, 'internal.upload');
+  assert.equal(document.size, 4);
+  assert.equal(new Date(document.uploadedAt).toISOString(), document.uploadedAt);
+  assert.match(document.id, /^[0-9a-f-]{36}$/);
+});
 
 test('repository lists only the owner documents in descending upload order', () => {
   const repository = createDocumentRepository();
@@ -18,7 +36,7 @@ test('service removes the uploaded file when metadata registration fails', async
   const failure = new Error('Falha no repositório.');
   const removed = [];
   const service = createDocumentService(
-    { create() { throw failure; } },
+    { async create() { throw failure; } },
     { async remove(storageName) { removed.push(storageName); } }
   );
   await assert.rejects(service.create('alice', {

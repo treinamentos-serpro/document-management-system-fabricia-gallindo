@@ -1,6 +1,5 @@
-const crypto = require('node:crypto');
-const path = require('node:path');
 const AppError = require('../errors/appError');
+const createDocumentMetadata = require('./documentMetadataFactory');
 
 function createDocumentService(documentRepository, fileRepository) {
   return {
@@ -9,24 +8,10 @@ function createDocumentService(documentRepository, fileRepository) {
         throw new AppError(400, 'VALIDATION_ERROR', 'Envie um arquivo no campo file.');
       }
 
-      const originalName = path.basename(uploadedFile.originalname.replaceAll('\\', '/'))
-        .replace(/[\r\n\0]/g, '')
-        .trim() || 'document';
-      const mimeType = /^[\w!#$&^_.+-]+\/[\w!#$&^_.+-]+$/.test(uploadedFile.mimetype)
-        ? uploadedFile.mimetype
-        : 'application/octet-stream';
-      const document = {
-        id: crypto.randomUUID(),
-        originalName,
-        size: uploadedFile.size,
-        uploadedAt: new Date().toISOString(),
-        owner,
-        storageName: uploadedFile.filename,
-        mimeType,
-      };
+      const document = createDocumentMetadata(owner, uploadedFile);
 
       try {
-        documentRepository.create(document);
+        await documentRepository.create(document);
         return document;
       } catch (error) {
         try {
